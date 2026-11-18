@@ -147,27 +147,40 @@ def run_camera():
                 results = DeepFace.find(
                     img_path=frame,
                     db_path=KNOWN_FACES_DIR,
-                    enforce_detection=False,
+                    enforce_detection=True,
                     detector_backend='retinaface',
                     silent=True,
-                    model_name='VGG-Face'
+                    model_name='VGG-Face',
+                    distance_metric='cosine'
                 )
 
                 if len(results) > 0 and not results[0].empty:
+                    # Filter to make sure we only grab actual images
                     valid_results = results[0][
                         results[0]['identity'].str.contains(r'\.(jpg|png|jpeg)$', case=False, regex=True)]
-                    if not valid_results.empty:
-                        path = valid_results['identity'].iloc[0]
-                        filename = os.path.basename(path)
-                        current_name = os.path.splitext(filename)[0].capitalize()
 
-                        if mark_attendance(current_name):
-                            print(f"[NEW ATTENDANCE] {current_name}")
+                    if not valid_results.empty:
+                        # Check how confident the AI is
+                        best_match_distance = valid_results['distance'].iloc[0]
+
+                        # If the distance is small, it's a real match (0.35 is a good strict threshold)
+                        if best_match_distance < 0.35:
+                            path = valid_results['identity'].iloc[0]
+                            filename = os.path.basename(path)
+                            current_name = os.path.splitext(filename)[0].capitalize()
+
+                            print(f"DEBUG: Found match -> {current_name} (Distance: {best_match_distance:.3f})")
+                            mark_attendance(current_name)
+                        else:
+                            # If the distance is too high, it's a false positive
+                            current_name = "Unknown"
+                            print(
+                                f"DEBUG: Rejected. Closest was {valid_results['identity'].iloc[0]} but distance was too high ({best_match_distance:.3f})")
                     else:
                         current_name = "Unknown"
                 else:
                     current_name = "Unknown"
-            except Exception:
+            except Exception as e:
                 current_name = "Unknown"
 
         color = (0, 255, 0) if current_name != "Unknown" else (0, 0, 255)

@@ -38,14 +38,6 @@ if not existing.empty:
 camera_running = False
 is_registering = False
 cap = None
-current_known_name = "Unknown"
-current_face_box = None
-last_detection_time = 0
-
-# ---------- AI Settings ----------
-MODEL_NAME = "Facenet512"  # Upgraded from VGG-Face for better accuracy
-DETECTOR_BACKEND = "retinaface"  # Slower but highly accurate
-DISTANCE_THRESHOLD = 0.30  # Stricter threshold for Facenet
 
 
 def mark_attendance(name):

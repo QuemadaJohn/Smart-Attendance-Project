@@ -10,8 +10,8 @@ from tkinter import messagebox, simpledialog
 from PIL import Image, ImageTk
 
 # ---------- Configuration ----------
-KNOWN_FACES_DIR = "known_faces"
-ATTENDANCE_DIR = "attendance"
+KNOWN_FACES_DIR = "../known_faces"
+ATTENDANCE_DIR = "../attendance"
 os.makedirs(ATTENDANCE_DIR, exist_ok=True)
 os.makedirs(KNOWN_FACES_DIR, exist_ok=True)
 

@@ -8,6 +8,7 @@ from deepface import DeepFace
 import tkinter as tk
 from tkinter import messagebox, simpledialog
 from PIL import Image, ImageTk
+import numpy as np
 
 # ---------- Configuration ----------
 KNOWN_FACES_DIR = "known_faces"
@@ -111,7 +112,7 @@ def register_student():
         filepath = os.path.join(KNOWN_FACES_DIR, f"{name.lower()}.jpg")
         cv2.imwrite(filepath, frame)
         status_label.config(text=f"Successfully registered {name}!", fg="green")
-        messagebox.showinfo("Success", f"{name} has been registered!")
+        messagebox.showinfo("Success", f"{name} has been registered!\nThe AI will now recognize them.")
     else:
         status_label.config(text="Failed to capture image.", fg="red")
         messagebox.showerror("Error", "Could not capture image.")
@@ -126,9 +127,14 @@ def run_camera():
     global cap, camera_running, is_registering
     cap = cv2.VideoCapture(0)
 
+    if not cap.isOpened():
+        print("ERROR: Camera could not be opened.")
+        return
+
+    print("SUCCESS: Camera opened.")
+
     frame_count = 0
-    current_known_name = "Unknown"
-    current_face_box = None
+    current_name = "Unknown"
 
     while camera_running and cap.isOpened():
         if is_registering:
@@ -139,19 +145,21 @@ def run_camera():
         if not ret:
             break
 
-        # Resize for display
         display_frame = cv2.resize(frame, (640, 480))
 
-        # --- AI SCANNING (Every 10th frame) ---
-        if frame_count % 10 == 0:
+        # SPEED FIX 1: Process every 30th frame to keep video smooth
+        if frame_count % 30 == 0:
+            # SPEED FIX 2: Send a smaller image to the AI
+            small_frame = cv2.resize(frame, (320, 240))
+
             try:
                 results = DeepFace.find(
-                    img_path=display_frame,
+                    img_path=small_frame,
                     db_path=KNOWN_FACES_DIR,
                     enforce_detection=True,
-                    detector_backend=DETECTOR_BACKEND,
+                    detector_backend='retinaface',
                     silent=True,
-                    model_name=MODEL_NAME,
+                    model_name='Facenet512',  # SPEED FIX 3: Faster model
                     distance_metric='cosine'
                 )
 
@@ -162,41 +170,27 @@ def run_camera():
                     if not valid_results.empty:
                         best_match_distance = valid_results['distance'].iloc[0]
 
-                        if best_match_distance < DISTANCE_THRESHOLD:
+                        # Strict threshold to prevent false positives
+                        if best_match_distance < 0.35:
                             path = valid_results['identity'].iloc[0]
                             filename = os.path.basename(path)
-                            current_known_name = os.path.splitext(filename)[0].capitalize()
+                            current_name = os.path.splitext(filename)[0].capitalize()
 
-                            source_x = valid_results['source_x'].iloc[0]
-                            source_y = valid_results['source_y'].iloc[0]
-                            source_w = valid_results['source_w'].iloc[0]
-                            source_h = valid_results['source_h'].iloc[0]
-
-                            current_face_box = (source_x, source_y, source_w, source_h)
-                            mark_attendance(current_known_name)
+                            print(f"DEBUG: Found match -> {current_name} (Distance: {best_match_distance:.3f})")
+                            mark_attendance(current_name)
                         else:
-                            current_known_name = "Unknown"
-                            current_face_box = None
+                            current_name = "Unknown"
+                            print(f"DEBUG: Rejected. Distance too high ({best_match_distance:.3f})")
                     else:
-                        current_known_name = "Unknown"
-                        current_face_box = None
+                        current_name = "Unknown"
                 else:
-                    current_known_name = "Unknown"
-                    current_face_box = None
-            except Exception:
-                current_known_name = "Unknown"
-                current_face_box = None
+                    current_name = "Unknown"
+            except Exception as e:
+                current_name = "Unknown"
 
-        # --- DRAWING ON SCREEN (Every Frame) ---
-        color = (0, 255, 0) if current_known_name != "Unknown" else (0, 0, 255)
+        color = (0, 255, 0) if current_name != "Unknown" else (0, 0, 255)
+        cv2.putText(display_frame, f"Student: {current_name}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
 
-        if current_face_box:
-            x, y, w, h = current_face_box
-            cv2.rectangle(display_frame, (x, y), (x + w, y + h), color, 2)
-
-        cv2.putText(display_frame, f"Student: {current_known_name}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-
-        # Update UI
         cv2image = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGBA)
         img = Image.fromarray(cv2image)
         imgtk = ImageTk.PhotoImage(image=img)
@@ -274,4 +268,5 @@ count_label = tk.Label(app, text=f"Total Marked Today: {len(already_marked)}", f
 count_label.pack(pady=5)
 
 # Start the UI
-app.mainloop()
+if __name__ == "__main__":
+    app.mainloop()

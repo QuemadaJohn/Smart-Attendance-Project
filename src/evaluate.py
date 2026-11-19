@@ -6,7 +6,6 @@ from deepface import DeepFace
 from sklearn.metrics import classification_report
 
 KNOWN_FACES_DIR = "../known_faces"
-ATTENDANCE_DIR = "../attendance"
 
 y_true = []
 y_pred = []

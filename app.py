@@ -12,8 +12,14 @@ from PIL import Image, ImageTk
 # ---------- Configuration ----------
 KNOWN_FACES_DIR = "known_faces"
 ATTENDANCE_DIR = "attendance"
-os.makedirs(ATTENDANCE_DIR, exist_ok=True)
+
+# AI Settings
+DETECTOR_BACKEND = 'retinaface'
+MODEL_NAME = 'VGG-Face'
+DISTANCE_THRESHOLD = 0.30  # Lower is stricter. If it falsely recognizes, lower to 0.30
+
 os.makedirs(KNOWN_FACES_DIR, exist_ok=True)
+os.makedirs(ATTENDANCE_DIR, exist_ok=True)
 
 today = datetime.now().strftime("%Y-%m-%d")
 CSV_PATH = os.path.join(ATTENDANCE_DIR, f"attendance_{today}.csv")
@@ -43,14 +49,14 @@ DISTANCE_THRESHOLD = 0.30  # Stricter threshold for Facenet
 
 
 def mark_attendance(name):
-    if name in already_marked or name == "Unknown":
+    if name in already_marked:
         return False
     now = datetime.now()
     row = {"Name": name, "Date": now.strftime("%Y-%m-%d"), "Time": now.strftime("%H:%M:%S")}
     pd.DataFrame([row]).to_csv(CSV_PATH, mode="a", header=False, index=False)
     already_marked.add(name)
 
-    app.after(0, lambda: update_ui_status(f"Marked: {name} at {row['Time']}", "green"))
+    app.after(0, lambda: update_ui_status(f"Marked: {name} at {row['Time']}"))
     app.after(0, lambda: update_marked_count())
     return True
 
@@ -61,14 +67,6 @@ def update_ui_status(text, color="green"):
 
 def update_marked_count():
     count_label.config(text=f"Total Marked Today: {len(already_marked)}")
-
-
-# ---------- Preprocessing ----------
-def preprocess_image(frame):
-    """Standardizes the frame before sending to the AI."""
-    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    resized = cv2.resize(rgb, (640, 480))  # Standard size
-    return resized
 
 
 # ---------- Registration Logic ----------
@@ -98,9 +96,10 @@ def register_student():
 
     time.sleep(1.5)
 
-    # Countdown
     for i in range(3, 0, -1):
-        status_label.config(text=f"Capturing in {i}...", fg="orange")
+        status_label.config(text=f"Capturing in {i}... Look at the camera!", fg="orange")
+        app.update()
+
         ret, frame = temp_cap.read()
         if ret:
             display_frame = cv2.resize(frame, (640, 480))
@@ -110,6 +109,7 @@ def register_student():
             app.video_label.imgtk = imgtk
             app.video_label.configure(image=imgtk)
             app.update()
+
         time.sleep(1)
 
     ret, frame = temp_cap.read()
@@ -132,15 +132,11 @@ def register_student():
 # ---------- Camera Logic ----------
 def run_camera():
     global cap, camera_running, is_registering
-    global current_known_name, current_face_box, last_detection_time
-
     cap = cv2.VideoCapture(0)
 
-    if not cap.isOpened():
-        app.after(0, lambda: update_ui_status("Error: Camera not found.", "red"))
-        return
-
     frame_count = 0
+    current_known_name = "Unknown"
+    current_face_box = None
 
     while camera_running and cap.isOpened():
         if is_registering:
@@ -151,16 +147,16 @@ def run_camera():
         if not ret:
             break
 
-        # Process every 10th frame to save CPU
-        if frame_count % 10 == 0:
-            processed_frame = preprocess_image(frame)
+        # Resize for display
+        display_frame = cv2.resize(frame, (640, 480))
 
+        # --- AI SCANNING (Every 10th frame) ---
+        if frame_count % 10 == 0:
             try:
-                # DeepFace requires numpy array in BGR format
                 results = DeepFace.find(
-                    img_path=processed_frame,
+                    img_path=display_frame,
                     db_path=KNOWN_FACES_DIR,
-                    enforce_detection=False,
+                    enforce_detection=True,
                     detector_backend=DETECTOR_BACKEND,
                     silent=True,
                     model_name=MODEL_NAME,
@@ -168,7 +164,6 @@ def run_camera():
                 )
 
                 if len(results) > 0 and not results[0].empty:
-                    # Filter out non-image files (like .h5 models)
                     valid_results = results[0][
                         results[0]['identity'].str.contains(r'\.(jpg|png|jpeg)$', case=False, regex=True)]
 
@@ -180,15 +175,12 @@ def run_camera():
                             filename = os.path.basename(path)
                             current_known_name = os.path.splitext(filename)[0].capitalize()
 
-                            # Get bounding box from the DeepFace result
                             source_x = valid_results['source_x'].iloc[0]
                             source_y = valid_results['source_y'].iloc[0]
                             source_w = valid_results['source_w'].iloc[0]
                             source_h = valid_results['source_h'].iloc[0]
 
                             current_face_box = (source_x, source_y, source_w, source_h)
-                            last_detection_time = time.time()
-
                             mark_attendance(current_known_name)
                         else:
                             current_known_name = "Unknown"
@@ -199,65 +191,46 @@ def run_camera():
                 else:
                     current_known_name = "Unknown"
                     current_face_box = None
-
-            except Exception as e:
+            except Exception:
                 current_known_name = "Unknown"
                 current_face_box = None
 
-        # Draw the box on the frame
-        display_frame = cv2.resize(frame, (640, 480))
-        scale_x = display_frame.shape[1] / processed_frame.shape[1]
-        scale_y = display_frame.shape[0] / processed_frame.shape[0]
+        # --- DRAWING ON SCREEN (Every Frame) ---
+        color = (0, 255, 0) if current_known_name != "Unknown" else (0, 0, 255)
 
-        # Only draw if a face was detected recently (within 1 second)
-        if current_face_box and (time.time() - last_detection_time < 1.0):
+        if current_face_box:
             x, y, w, h = current_face_box
-            # Scale coordinates to match the display frame size
-            x, y, w, h = int(x * scale_x), int(y * scale_y), int(w * scale_x), int(h * scale_y)
-
-            color = (0, 255, 0) if current_known_name != "Unknown" else (0, 0, 255)
             cv2.rectangle(display_frame, (x, y), (x + w, y + h), color, 2)
-            cv2.putText(display_frame, current_known_name, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-        else:
-            # If no box, still show the status text
-            color = (0, 255, 0) if current_known_name != "Unknown" else (0, 0, 255)
-            cv2.putText(display_frame, f"Student: {current_known_name}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color,
-                        2)
 
-        # Convert and update Tkinter UI
+        cv2.putText(display_frame, f"Student: {current_known_name}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+
+        # Update UI
         cv2image = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGBA)
         img = Image.fromarray(cv2image)
         imgtk = ImageTk.PhotoImage(image=img)
 
-        # Update UI safely (ignoring errors if user clicks X)
-        try:
-            app.video_label.imgtk = imgtk
-            app.video_label.configure(image=imgtk)
-        except:
-            pass
+        app.video_label.imgtk = imgtk
+        app.video_label.configure(image=imgtk)
 
         frame_count += 1
 
     if cap:
         cap.release()
-    try:
-        app.video_label.configure(image='')
-    except:
-        pass
+    app.video_label.configure(image='')
 
 
 def start_camera():
     global camera_running
     if not camera_running:
         camera_running = True
-        update_ui_status("Camera Started. Scanning...", "blue")
+        status_label.config(text="Camera Started. Scanning...", fg="blue")
         threading.Thread(target=run_camera, daemon=True).start()
 
 
 def stop_camera():
     global camera_running
     camera_running = False
-    update_ui_status("Camera Stopped.", "red")
+    status_label.config(text="Camera Stopped.", fg="red")
 
 
 def view_attendance():
@@ -308,5 +281,5 @@ count_label = tk.Label(app, text=f"Total Marked Today: {len(already_marked)}", f
                        bg="#2c3e50", fg="#f1c40f")
 count_label.pack(pady=5)
 
-if __name__ == "__main__":
-    app.mainloop()
+# Start the UI
+app.mainloop()

@@ -164,7 +164,7 @@ def run_camera():
                         best_match_distance = valid_results['distance'].iloc[0]
 
                         # If the distance is small, it's a real match (0.35 is a good strict threshold)
-                        if best_match_distance < 0.35:
+                        if best_match_distance < 0.45:
                             path = valid_results['identity'].iloc[0]
                             filename = os.path.basename(path)
                             current_name = os.path.splitext(filename)[0].capitalize()
@@ -183,7 +183,8 @@ def run_camera():
             except Exception as e:
                 current_name = "Unknown"
 
-        color = (0, 255, 0) if current_name != "Unknown" else (0, 0, 255)
+        # Draw the box
+        color = (0, 255, 0) if current_name != "Unknown" and current_name != "Verifying..." else (0, 0, 255)
         cv2.putText(display_frame, f"Student: {current_name}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
 
         cv2image = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGBA)

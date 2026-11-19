@@ -124,24 +124,23 @@ def register_student():
 
 # ---------- Camera Logic ----------
 def run_camera():
-    global cap, camera_running, is_registering
+    global cap, camera_running
     cap = cv2.VideoCapture(0)
 
     frame_count = 0
     current_name = "Unknown"
 
-    while camera_running and cap.isOpened():
-        # If registering, skip processing and let the registration function use the camera
-        if is_registering:
-            time.sleep(0.1)
-            continue
+    # NEW: Persistence tracker
+    face_history = {}
 
+    while camera_running and cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
 
         display_frame = cv2.resize(frame, (640, 480))
 
+        # Reset the name on every frame so it doesn't get stuck
         if frame_count % 15 == 0:
             try:
                 results = DeepFace.find(
@@ -155,33 +154,38 @@ def run_camera():
                 )
 
                 if len(results) > 0 and not results[0].empty:
-                    # Filter to make sure we only grab actual images
                     valid_results = results[0][
                         results[0]['identity'].str.contains(r'\.(jpg|png|jpeg)$', case=False, regex=True)]
 
                     if not valid_results.empty:
-                        # Check how confident the AI is
                         best_match_distance = valid_results['distance'].iloc[0]
 
-                        # If the distance is small, it's a real match (0.35 is a good strict threshold)
-                        if best_match_distance < 0.45:
+                        # STRICTER THRESHOLD: Lower it to 0.30 for better accuracy
+                        if best_match_distance < 0.30:
                             path = valid_results['identity'].iloc[0]
                             filename = os.path.basename(path)
-                            current_name = os.path.splitext(filename)[0].capitalize()
+                            detected_name = os.path.splitext(filename)[0].capitalize()
 
-                            print(f"DEBUG: Found match -> {current_name} (Distance: {best_match_distance:.3f})")
-                            mark_attendance(current_name)
+                            # NEW PERSISTENCE CHECK: You must be seen 2 times in a row
+                            face_history[detected_name] = face_history.get(detected_name, 0) + 1
+
+                            if face_history[detected_name] >= 2:
+                                current_name = detected_name
+                                print(f"DEBUG: Confirmed match -> {current_name}")
+                                mark_attendance(current_name)
+                            else:
+                                current_name = "Verifying..."
                         else:
-                            # If the distance is too high, it's a false positive
                             current_name = "Unknown"
-                            print(
-                                f"DEBUG: Rejected. Closest was {valid_results['identity'].iloc[0]} but distance was too high ({best_match_distance:.3f})")
+                            print(f"DEBUG: Rejected. Distance too high ({best_match_distance:.3f})")
                     else:
                         current_name = "Unknown"
                 else:
                     current_name = "Unknown"
             except Exception as e:
                 current_name = "Unknown"
+                # Clear history if no face is found
+                face_history.clear()
 
         # Draw the box
         color = (0, 255, 0) if current_name != "Unknown" and current_name != "Verifying..." else (0, 0, 255)

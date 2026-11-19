@@ -21,6 +21,6 @@
 ## 3. Improvement Plan
 | Failure Cause | Change | Expected Effect |
 | :--- | :--- | :--- |
-| **Backlighting (False Positives)** | Add a face distance threshold `< 0.35` in `run.py`. | Prevents marking people who only partially match a celebrity. |
+| **Backlighting (False Positives)** | Add a face distance threshold `< 0.35` in `app.py`. | Prevents marking people who only partially match a celebrity. |
 | **Dark Room (Missed Detections)** | Apply CLAHE (Histogram Equalization) to frames before sending to AI. | Improves recognition in low light. |
 | **Viewpoint** | Register users with multiple angles (front and side). | Reduces "Unknown" errors when users move. |

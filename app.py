@@ -13,12 +13,6 @@ import numpy as np
 # ---------- Configuration ----------
 KNOWN_FACES_DIR = "known_faces"
 ATTENDANCE_DIR = "attendance"
-
-# AI Settings
-DETECTOR_BACKEND = 'retinaface'
-MODEL_NAME = 'VGG-Face'
-DISTANCE_THRESHOLD = 0.30  # Lower is stricter. If it falsely recognizes, lower to 0.30
-
 os.makedirs(KNOWN_FACES_DIR, exist_ok=True)
 os.makedirs(ATTENDANCE_DIR, exist_ok=True)
 

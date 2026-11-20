@@ -68,7 +68,7 @@ def register_student():
         return
 
     is_registering = True
-    time.sleep(1)  # Give the main loop a second to release the camera
+    time.sleep(1)
 
     status_label.config(text="Get ready! Capturing in 3 seconds...", fg="orange")
     app.update()
@@ -132,45 +132,31 @@ def run_camera():
         if not ret:
             break
 
-        # Display frame
         display_frame = cv2.resize(frame, (640, 480))
 
         if frame_count % 15 == 0:
             try:
-                # ZOOM LOGIC: Crop center 60% to detect faces from 5 feet away
-                h, w, _ = frame.shape
-                center_crop = frame[int(h * 0.2):int(h * 0.8), int(w * 0.2):int(w * 0.8)]
-                zoomed_frame = cv2.resize(center_crop, (640, 480))
-
+                # Using the ORIGINAL full frame (no zoom crop)
                 results = DeepFace.find(
-                    img_path=zoomed_frame,
+                    img_path=frame,
                     db_path=KNOWN_FACES_DIR,
                     enforce_detection=True,
                     detector_backend='retinaface',
                     silent=True,
-                    model_name='VGG-Face',
-                    distance_metric='cosine'
+                    model_name='VGG-Face'
                 )
 
                 if len(results) > 0 and not results[0].empty:
-                    # Filter to make sure we only grab actual images
                     valid_results = results[0][
                         results[0]['identity'].str.contains(r'\.(jpg|png|jpeg)$', case=False, regex=True)]
 
                     if not valid_results.empty:
-                        # Check confidence score (lower is better)
-                        best_match_distance = valid_results['distance'].iloc[0]
+                        path = valid_results['identity'].iloc[0]
+                        filename = os.path.basename(path)
+                        current_name = os.path.splitext(filename)[0].capitalize()
 
-                        if best_match_distance < 0.35:
-                            path = valid_results['identity'].iloc[0]
-                            filename = os.path.basename(path)
-                            current_name = os.path.splitext(filename)[0].capitalize()
-
-                            print(f"DEBUG: Found match -> {current_name} (Distance: {best_match_distance:.3f})")
-                            mark_attendance(current_name)
-                        else:
-                            current_name = "Unknown"
-                            print(f"DEBUG: Rejected. Distance too high ({best_match_distance:.3f})")
+                        print(f"DEBUG: Found match -> {current_name}")
+                        mark_attendance(current_name)
                     else:
                         current_name = "Unknown"
                 else:
@@ -178,11 +164,9 @@ def run_camera():
             except Exception as e:
                 current_name = "Unknown"
 
-        # Draw text on the display frame (not the zoomed frame)
         color = (0, 255, 0) if current_name != "Unknown" else (0, 0, 255)
         cv2.putText(display_frame, f"Student: {current_name}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
 
-        # Update UI
         cv2image = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGBA)
         img = Image.fromarray(cv2image)
         imgtk = ImageTk.PhotoImage(image=img)

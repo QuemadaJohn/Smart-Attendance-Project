@@ -1,9 +1,11 @@
 import os
 import cv2
-import numpy as np
 import pandas as pd
+import numpy as np
 from deepface import DeepFace
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
+import matplotlib.pyplot as plt
+import time
 
 KNOWN_FACES_DIR = "../known_faces"
 

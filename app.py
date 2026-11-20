@@ -8,7 +8,6 @@ from deepface import DeepFace
 import tkinter as tk
 from tkinter import messagebox, simpledialog
 from PIL import Image, ImageTk
-import numpy as np
 
 # ---------- Configuration ----------
 KNOWN_FACES_DIR = "known_faces"

@@ -2,7 +2,7 @@
 
 A Python-based desktop application that uses AI to identify students via webcam and automatically logs their attendance to a daily CSV file. It features a Tkinter GUI with live face recognition, an automated registration module, and a real-time attendance viewer.
 
-![App Screenshot](https://github.com/QuemadaJohn/Smart-Attendance-Project/blob/main/src/outputs/UI_img.png?raw=true)
+![App Screenshot](app_screenshot.png)
 
 ## 🛠️ Requirements
 *   Python 3.10+

@@ -36,7 +36,7 @@ cap = None
 
 
 def mark_attendance(name):
-    if name in already_marked:
+    if name in already_marked or name == "Unknown":
         return False
     now = datetime.now()
     row = {"Name": name, "Date": now.strftime("%Y-%m-%d"), "Time": now.strftime("%H:%M:%S")}
@@ -69,7 +69,7 @@ def register_student():
         return
 
     is_registering = True
-    time.sleep(1)
+    time.sleep(1)  # Give the main loop a second to release the camera
 
     status_label.config(text="Get ready! Capturing in 3 seconds...", fg="orange")
     app.update()
@@ -121,12 +121,6 @@ def run_camera():
     global cap, camera_running, is_registering
     cap = cv2.VideoCapture(0)
 
-    if not cap.isOpened():
-        print("ERROR: Camera could not be opened.")
-        return
-
-    print("SUCCESS: Camera opened.")
-
     frame_count = 0
     current_name = "Unknown"
 
@@ -139,32 +133,35 @@ def run_camera():
         if not ret:
             break
 
+        # Display frame
         display_frame = cv2.resize(frame, (640, 480))
 
-        # SPEED FIX 1: Process every 30th frame to keep video smooth
-        if frame_count % 30 == 0:
-            # SPEED FIX 2: Send a smaller image to the AI
-            small_frame = cv2.resize(frame, (320, 240))
-
+        if frame_count % 15 == 0:
             try:
+                # ZOOM LOGIC: Crop center 60% to detect faces from 5 feet away
+                h, w, _ = frame.shape
+                center_crop = frame[int(h * 0.2):int(h * 0.8), int(w * 0.2):int(w * 0.8)]
+                zoomed_frame = cv2.resize(center_crop, (640, 480))
+
                 results = DeepFace.find(
-                    img_path=small_frame,
+                    img_path=zoomed_frame,
                     db_path=KNOWN_FACES_DIR,
                     enforce_detection=True,
                     detector_backend='retinaface',
                     silent=True,
-                    model_name='Facenet512',  # SPEED FIX 3: Faster model
+                    model_name='VGG-Face',
                     distance_metric='cosine'
                 )
 
                 if len(results) > 0 and not results[0].empty:
+                    # Filter to make sure we only grab actual images
                     valid_results = results[0][
                         results[0]['identity'].str.contains(r'\.(jpg|png|jpeg)$', case=False, regex=True)]
 
                     if not valid_results.empty:
+                        # Check confidence score (lower is better)
                         best_match_distance = valid_results['distance'].iloc[0]
 
-                        # Strict threshold to prevent false positives
                         if best_match_distance < 0.35:
                             path = valid_results['identity'].iloc[0]
                             filename = os.path.basename(path)
@@ -182,9 +179,11 @@ def run_camera():
             except Exception as e:
                 current_name = "Unknown"
 
+        # Draw text on the display frame (not the zoomed frame)
         color = (0, 255, 0) if current_name != "Unknown" else (0, 0, 255)
         cv2.putText(display_frame, f"Student: {current_name}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
 
+        # Update UI
         cv2image = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGBA)
         img = Image.fromarray(cv2image)
         imgtk = ImageTk.PhotoImage(image=img)
@@ -262,5 +261,4 @@ count_label = tk.Label(app, text=f"Total Marked Today: {len(already_marked)}", f
 count_label.pack(pady=5)
 
 # Start the UI
-if __name__ == "__main__":
-    app.mainloop()
+app.mainloop()
